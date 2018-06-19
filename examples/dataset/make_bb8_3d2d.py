@@ -5,24 +5,33 @@ import os.path as osp
 import os
 import scipy.misc
 import numpy as np
-
+from joblib import Parallel, delayed
+import multiprocessing
 
 def main():
     data_type = 'all'
-    dataset = pascal3d.dataset.Pascal3DDataset(data_type, pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet)
+    dataset1 = pascal3d.dataset.Pascal3DDataset(data_type,
+                                                pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet)
+    dataset2 = pascal3d.dataset.Pascal3DDataset(data_type,
+                                                pascal3d.dataset.Pascal3DDataset.dataset_source_enum.pascal)
     output_directory = os.path.expanduser('~/Documents/UCL/PROJECT/DATA/BB8_PASCAL_DATA')
     bb8_dict_file = osp.join(output_directory, 'bb8_points')
     image_file_type = '.jpg'
     bb8_points = {}
-    for i in range(len(dataset)):
-        dataset.show_bb8(i)
+    num_cores = 4 # multiprocessing.cpu_count()
+
+    def processData(i):
+        if i >= len(dataset1):
+            dataset = dataset2
+        else:
+            dataset = dataset1
 
         data = dataset.get_data(i)
         # only want to train against singular examples
         if len(data['objects']) == 1:
             img1 = data['img']
             class_dir = data['objects'][0][0]
-            output_image_filename = osp.join(output_directory, class_dir, class_dir +'_' + '{0:03d}'.format(i) + image_file_type)
+            output_image_filename = osp.join(output_directory, class_dir, class_dir +'_' + '{0:05d}'.format(i) + image_file_type)
             bb8s = dataset.camera_transform_cad_bb8(data)
             assert len(bb8s) == 1, 'more than one bb8?'
             bb8 = bb8s[0]
@@ -39,8 +48,18 @@ def main():
                     os.makedirs(dir_name)
 
                 scipy.misc.imsave(output_image_filename, img1)
+        if i % int(0.1 * len(dataset)) == 0:
+            print('percent: %s' % (i / len(dataset)))
+
+        return (i, bb8_points)
+
+    results = Parallel(n_jobs=num_cores)(delayed(processData)(i) for i in range(len(dataset1) + len(dataset2)))
+    for (i, bb8_result) in results:
+        bb8_points[i] = bb8_result
 
     np.save(bb8_dict_file, bb8_points)
+
+
 
 if __name__ == '__main__':
     main()

@@ -130,13 +130,14 @@ class Pascal3DDataset(object):
         #self.dataset_dir = osp.expanduser('~/data/datasets/Pascal3D/PASCAL3D+_release1.1')
         self.dataset_dir = osp.expanduser('~/Documents/UCL/PROJECT/DATA/PASCAL3D+_release1.1')
         # data source
-        self.annotation_directory = 'Annotations/{}_' + dataset_source.name
+        self.annotation_directory = osp.join(self.dataset_dir, 'Annotations/{}_' + dataset_source.name)
+        self.image_directory = osp.join(self.dataset_dir, 'Images/{}_' + dataset_source.name)
 
         # get all data ids
         print('Generating index for annotations...')
         data_ids = []
         for cls in self.class_names[1:]:
-            cls_ann_dir = osp.join(self.dataset_dir, self.annotation_directory.format(cls))
+            cls_ann_dir = self.annotation_directory.format(cls)
             if osp.isdir(cls_ann_dir):
                 for ann_file in os.listdir(cls_ann_dir):
                     ann = Pascal3DAnnotation(osp.join(cls_ann_dir, ann_file))
@@ -172,14 +173,14 @@ class Pascal3DDataset(object):
             'class_cads': {},
             'label_cls': None,
         }
-        for cls in self.class_names[1:]:
-            cls_ann_dir = osp.join(self.dataset_dir, self.annotation_directory.format(cls))
+        for class_name in self.class_names[1:]:
+            cls_ann_dir = self.annotation_directory.format(class_name)
             ann_file = osp.join(cls_ann_dir, data_id + '.mat')
             if not osp.exists(ann_file):
                 continue
-            ann = Pascal3DAnnotation(ann_file)
 
-            if data['label_cls'] is None:
+            ann = Pascal3DAnnotation(ann_file)
+            if hasattr(ann, 'segmented') and data['label_cls'] is None:
                 label_cls_file = osp.join(
                     self.dataset_dir,
                     'PASCAL/VOCdevkit/VOC2012/SegmentationClass/{}.png'
@@ -206,10 +207,7 @@ class Pascal3DDataset(object):
                 data['class_cads'][class_name] = cad
 
             if data['img'] is None:
-                img_file = osp.join(
-                    self.dataset_dir,
-                    'Images/{}_pascal'.format(class_name),
-                    ann.img_filename)
+                img_file = osp.join(self.image_directory.format(class_name), ann.img_filename)
                 data['img'] = scipy.misc.imread(img_file)
 
             for obj in ann.objects:
