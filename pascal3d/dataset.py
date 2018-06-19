@@ -166,7 +166,7 @@ class Pascal3DDataset(object):
     def get_data(self, i):
         data_id = self.data_ids[i]
 
-        data = {ta
+        data = {
             'img': None,
             'objects': [],
             'class_cads': {},
