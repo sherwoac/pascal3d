@@ -10,7 +10,7 @@ import pascal3d
 def main():
     data_type = 'val'
     dataset = pascal3d.dataset.Pascal3DDataset(data_type)
-    for i in xrange(len(dataset)):
+    for i in range(len(dataset)):
         print('[{dtype}:{id}] showing depth'.format(dtype=data_type, id=i))
         data = dataset.get_data(i)
         img = data['img']

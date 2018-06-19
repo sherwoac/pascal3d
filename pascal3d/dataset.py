@@ -35,7 +35,8 @@ class Pascal3DAnnotation(object):
         ann_data = scipy.io.loadmat(ann_file)
 
         self.img_filename = ann_data['record']['filename'][0][0][0]
-        self.segmented = ann_data['record']['segmented'][0][0][0]
+        if hasattr(ann_data['record'], 'segmented'):
+            self.segmented = ann_data['record']['segmented'][0][0][0]
 
         self.objects = []
         for obj in ann_data['record']['objects'][0][0][0]:
@@ -77,6 +78,10 @@ class Pascal3DAnnotation(object):
 
 
 class Pascal3DDataset(object):
+    from enum import Enum
+    class dataset_source_enum(Enum):
+        pascal = 1
+        imagenet = 2
 
     voc2012_class_names = [
         'background',
@@ -118,31 +123,42 @@ class Pascal3DDataset(object):
         'tvmonitor',
     ]
 
-    def __init__(self, data_type):
-        assert data_type in ('train', 'val')
-        self.dataset_dir = osp.expanduser(
-            '~/data/datasets/Pascal3D/PASCAL3D+_release1.1')
+    def __init__(self, data_type, dataset_source = dataset_source_enum.pascal):
+        assert data_type in ('train', 'val', 'all')
+        assert isinstance(dataset_source, self.dataset_source_enum), "unknown data source"
+
+        #self.dataset_dir = osp.expanduser('~/data/datasets/Pascal3D/PASCAL3D+_release1.1')
+        self.dataset_dir = osp.expanduser('~/Documents/UCL/PROJECT/DATA/PASCAL3D+_release1.1')
+        # data source
+        self.annotation_directory = 'Annotations/{}_' + dataset_source.name
+
         # get all data ids
         print('Generating index for annotations...')
         data_ids = []
         for cls in self.class_names[1:]:
-            cls_ann_dir = osp.join(
-                self.dataset_dir, 'Annotations/{}_pascal'.format(cls))
-            for ann_file in os.listdir(cls_ann_dir):
-                ann = Pascal3DAnnotation(osp.join(cls_ann_dir, ann_file))
-                if not ann.segmented:
-                    continue
-                data_id = osp.splitext(ann_file)[0]
-                data_ids.append(data_id)
+            cls_ann_dir = osp.join(self.dataset_dir, self.annotation_directory.format(cls))
+            if osp.isdir(cls_ann_dir):
+                for ann_file in os.listdir(cls_ann_dir):
+                    ann = Pascal3DAnnotation(osp.join(cls_ann_dir, ann_file))
+                    if hasattr(ann, 'segmented') and not ann.segmented:
+                        continue
+                    data_id = osp.splitext(ann_file)[0]
+                    data_ids.append(data_id)
         print('Done.')
         data_ids = list(set(data_ids))
         # split data to train and val
-        ids_train, ids_val = sklearn.model_selection.train_test_split(
-            data_ids, test_size=0.25, random_state=1234)
+        if not data_type == 'all':
+            ids_train, ids_val = sklearn.model_selection.train_test_split(
+                data_ids, test_size=0.25, random_state=1234)
+        else:
+            data_ids = sorted(data_ids) #  keep them in order for replicability
+
         if data_type == 'train':
             self.data_ids = ids_train
-        else:
+        elif data_type == 'val':
             self.data_ids = ids_val
+        else: #  'all'
+            self.data_ids = data_ids
 
     def __len__(self):
         return len(self.data_ids)
@@ -150,17 +166,15 @@ class Pascal3DDataset(object):
     def get_data(self, i):
         data_id = self.data_ids[i]
 
-        data = {
+        data = {ta
             'img': None,
             'objects': [],
             'class_cads': {},
             'label_cls': None,
         }
-
-        for class_name in self.class_names[1:]:
-            ann_file = osp.join(
-                self.dataset_dir,
-                'Annotations/{}_pascal/{}.mat'.format(class_name, data_id))
+        for cls in self.class_names[1:]:
+            cls_ann_dir = osp.join(self.dataset_dir, self.annotation_directory.format(cls))
+            ann_file = osp.join(cls_ann_dir, data_id + '.mat')
             if not osp.exists(ann_file):
                 continue
             ann = Pascal3DAnnotation(ann_file)
@@ -237,6 +251,73 @@ class Pascal3DDataset(object):
 
         plt.tight_layout()
         plt.show()
+
+    def show_bb8(self, i):
+        """ show bb8 2d/3d """
+        data = self.get_data(i)
+
+        img1 = data['img']
+
+        ax1 = plt.subplot(121)
+        plt.axis('off')
+        ax1.imshow(img1)
+
+        ax2 = plt.subplot(122)
+        plt.axis('off')
+        ax2.imshow(img1)
+        bb8s = self.camera_transform_cad_bb8(data)
+        for bb8 in bb8s:
+            bb4_front, bb4_back = np.split(bb8,2)
+            bb8_dim_first = np.transpose(bb4_front)
+            plt.scatter(bb8_dim_first[0], bb8_dim_first[1])
+            bb8_dim_first = np.transpose(bb4_back)
+            plt.scatter(bb8_dim_first[0], bb8_dim_first[1])
+
+
+        ax2.plot()
+
+        plt.tight_layout()
+        plt.show()
+
+    def camera_transform_cad_bb8(self, data):
+        """ get model i and do camera transform"""
+        objects = data['objects']
+        class_cads = data['class_cads']
+
+        bb8s = []
+        # for each annotated object
+        for cls, obj in objects:
+            cad_index = obj['cad_index']
+            cad = class_cads[cls][cad_index]
+
+            vertices_3d = cad['vertices']
+            v3dT = np.transpose(vertices_3d)
+            xMin = np.min(v3dT[0])
+            xMax = np.max(v3dT[0])
+            yMin = np.min(v3dT[1])
+            yMax = np.max(v3dT[1])
+            zMin = np.min(v3dT[2])
+            zMax = np.max(v3dT[2])
+
+            # 3D bounding box
+            bb83d = np.empty([8,3], dtype=np.float)
+            # front
+            bb83d[0] = [xMin, yMin, zMin]
+            bb83d[1] = [xMin, yMin, zMax]
+            bb83d[2] = [xMax, yMin, zMin]
+            bb83d[3] = [xMax, yMin, zMax]
+            # ..and back faces
+            bb83d[4] = [xMin, yMax, zMin]
+            bb83d[5] = [xMin, yMax, zMax]
+            bb83d[6] = [xMax, yMax, zMin]
+            bb83d[7] = [xMax, yMax, zMax]
+
+            bb8_vertices_2d = utils.project_points_3d_to_2d(
+              bb83d, **obj['viewpoint'])
+
+            bb8s.append(bb8_vertices_2d)
+
+        return bb8s
 
     def show_cad(self, i, camframe=False):
         if camframe:
@@ -600,7 +681,9 @@ class Pascal3DDataset(object):
                 if mask.sum() == 0:
                     continue
                 #
-                ray1_xy = np.array(zip(*np.where(mask)))[:, ::-1]
+                test1 = np.array(zip(*np.where(mask)))
+                print(test1.shape)
+                ray1_xy = test1[:, ::-1]
                 n_rays = len(ray1_xy)
                 ray1_z = np.zeros((n_rays, 1), dtype=np.float64)
                 ray1_xyz = np.hstack((ray1_xy, ray1_z))

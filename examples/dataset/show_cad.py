@@ -13,7 +13,7 @@ def main():
     camframe = args.camframe
 
     dataset = pascal3d.dataset.Pascal3DDataset('val')
-    for i in xrange(len(dataset)):
+    for i in range(len(dataset)):
         dataset.show_cad(i, camframe=camframe)
 
 
