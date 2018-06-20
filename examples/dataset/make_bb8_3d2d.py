@@ -51,14 +51,14 @@ def main():
                     os.makedirs(dir_name)
 
                 scipy.misc.imsave(output_image_filename, img1)
-        if i % int(0.1 * len(dataset)) == 0:
-            print('percent: %s' % int(round((100.0 * i / len(dataset)))))
+        if i % int(0.1 * (len(dataset1)+len(dataset2))) == 0:
+            print('percent: %s' % int(round((100 * i / (len(dataset1)+len(dataset2))))))
 
         return (i, bb8)
 
     results = Parallel(n_jobs=num_cores)(delayed(processData)(i) for i in range(len(dataset1) + len(dataset2)))
     for (i, bb8_result) in results:
-        if bb8_result:
+        if not bb8_result is None:
             bb8_points[i] = bb8_result
 
     np.savez(bb8_dict_file, bb8_points)
