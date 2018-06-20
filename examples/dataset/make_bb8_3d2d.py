@@ -18,7 +18,7 @@ def main():
     bb8_dict_file = osp.join(output_directory, 'bb8_points')
     image_file_type = '.jpg'
     bb8_points = {}
-    num_cores = 4 # multiprocessing.cpu_count()
+    num_cores = multiprocessing.cpu_count()
 
     def processData(i):
         if i >= len(dataset1):
@@ -55,9 +55,10 @@ def main():
 
     results = Parallel(n_jobs=num_cores)(delayed(processData)(i) for i in range(len(dataset1) + len(dataset2)))
     for (i, bb8_result) in results:
-        bb8_points[i] = bb8_result
+        if bb8_result:
+            bb8_points[i] = bb8_result
 
-    np.save(bb8_dict_file, bb8_points)
+    np.savez(bb8_dict_file, bb8_points)
 
 
 
