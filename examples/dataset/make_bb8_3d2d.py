@@ -22,16 +22,19 @@ def main():
 
     def processData(i):
         if i >= len(dataset1):
+            dataset_index = i
             dataset = dataset2
         else:
+            dataset_index = i - len(dataset1)
             dataset = dataset1
 
-        data = dataset.get_data(i)
+        data = dataset.get_data(dataset_index)
+        bb8 = None
         # only want to train against singular examples
         if len(data['objects']) == 1:
             img1 = data['img']
             class_dir = data['objects'][0][0]
-            output_image_filename = osp.join(output_directory, class_dir, class_dir +'_' + '{0:05d}'.format(i) + image_file_type)
+            output_image_filename = osp.join(output_directory, class_dir, class_dir +'_' + '{0:05d}'.format(dataset_index) + image_file_type)
             bb8s = dataset.camera_transform_cad_bb8(data)
             assert len(bb8s) == 1, 'more than one bb8?'
             bb8 = bb8s[0]
@@ -49,9 +52,9 @@ def main():
 
                 scipy.misc.imsave(output_image_filename, img1)
         if i % int(0.1 * len(dataset)) == 0:
-            print('percent: %s' % (i / len(dataset)))
+            print('percent: %s' % int(round((i / len(dataset)))))
 
-        return (i, bb8_points)
+        return (i, bb8)
 
     results = Parallel(n_jobs=num_cores)(delayed(processData)(i) for i in range(len(dataset1) + len(dataset2)))
     for (i, bb8_result) in results:
