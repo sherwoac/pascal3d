@@ -52,7 +52,7 @@ def main():
 
                 scipy.misc.imsave(output_image_filename, img1)
         if i % int(0.1 * len(dataset)) == 0:
-            print('percent: %s' % int(round((i / len(dataset)))))
+            print('percent: %s' % int(round((100.0*i / len(dataset)))))
 
         return (i, bb8)
 
