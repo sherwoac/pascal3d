@@ -22,10 +22,10 @@ def main():
 
     def processData(i):
         if i >= len(dataset1):
-            dataset_index = i
+            dataset_index = i - len(dataset1)
             dataset = dataset2
         else:
-            dataset_index = i - len(dataset1)
+            dataset_index = i
             dataset = dataset1
 
         data = dataset.get_data(dataset_index)
@@ -52,7 +52,7 @@ def main():
 
                 scipy.misc.imsave(output_image_filename, img1)
         if i % int(0.1 * len(dataset)) == 0:
-            print('percent: %s' % int(round((100.0*i / len(dataset)))))
+            print('percent: %s' % int(round((100.0 * i / len(dataset)))))
 
         return (i, bb8)
 
