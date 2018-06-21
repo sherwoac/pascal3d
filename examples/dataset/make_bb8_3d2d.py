@@ -15,7 +15,7 @@ def main():
                                                 pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet)
     dataset1 = pascal3d.dataset.Pascal3DDataset(data_type,
                                                 pascal3d.dataset.Pascal3DDataset.dataset_source_enum.pascal)
-    len_datasets = 10 #len(dataset1) + len(dataset2)
+    len_datasets = len(dataset1) + len(dataset2)
 
     output_directory = os.path.expanduser('~/Documents/UCL/PROJECT/DATA/BB8_PASCAL_DATA')
     bb8_dict_file = osp.join(output_directory, 'bb8_points')
