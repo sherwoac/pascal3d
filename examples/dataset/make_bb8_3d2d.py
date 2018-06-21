@@ -40,14 +40,14 @@ def main():
             output_image_filename = osp.join(output_directory, class_dir, class_dir +'_' + '{0:05d}'.format(dataset_index) + image_file_type)
             bb8s = dataset.camera_transform_cad_bb8(data)
             assert len(bb8s) == 1, 'more than one bb8?'
-            bb8 = bb8s[0]
+            (bb8, Dx, Dy, Dz) = bb8s[0]
             x_values, y_values = np.split(np.transpose(bb8), 2)
 
             if np.min(x_values) > 0 \
                 and np.min(y_values) > 0 \
                 and np.max(x_values) < img1.shape[1] \
                 and np.max(y_values) < img1.shape[0]:
-                bb8_points[i] = bb8
+                bb8_points[i] = (bb8, Dx, Dy, Dz)
 
                 dir_name = osp.dirname(output_image_filename)
                 if not osp.isdir(dir_name):
