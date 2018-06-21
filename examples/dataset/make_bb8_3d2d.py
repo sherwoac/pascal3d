@@ -32,7 +32,8 @@ def main():
             dataset = dataset1
 
         data = dataset.get_data(dataset_index)
-        bb8 = None
+        (bb8, Dx, Dy, Dz) = (None, None, None, None)
+
         # only want to train against singular examples
         if len(data['objects']) == 1:
             img1 = data['img']
@@ -47,7 +48,6 @@ def main():
                 and np.min(y_values) > 0 \
                 and np.max(x_values) < img1.shape[1] \
                 and np.max(y_values) < img1.shape[0]:
-                bb8_points[i] = (bb8, Dx, Dy, Dz)
 
                 dir_name = osp.dirname(output_image_filename)
                 if not osp.isdir(dir_name):
@@ -58,7 +58,7 @@ def main():
         if i % int(0.1 * len_datasets) == 0:
             print('percent: %s' % int(round((100 * i / len_datasets))))
 
-        return i, bb8
+        return i, (bb8, Dx, Dy, Dz)
 
     if num_cores > 1:
         results = Parallel(n_jobs=num_cores)(delayed(processData)(i) for i in range(len_datasets))
