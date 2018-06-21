@@ -21,7 +21,7 @@ def main():
     bb8_dict_file = osp.join(output_directory, 'bb8_points')
     image_file_type = '.jpg'
     bb8_points = {}
-    num_cores = multiprocessing.cpu_count()
+    num_cores = 1 #multiprocessing.cpu_count()
 
     def processData(i):
         if i >= len(dataset1):
@@ -32,7 +32,9 @@ def main():
             dataset = dataset1
 
         data = dataset.get_data(dataset_index)
-        (bb8, Dx, Dy, Dz) = (None, None, None, None)
+
+        if i % int(0.1 * len_datasets) == 0:
+            print('percent: %s' % int(round((100 * i / len_datasets))))
 
         # only want to train against singular examples
         if len(data['objects']) == 1:
@@ -54,11 +56,9 @@ def main():
                     os.makedirs(dir_name)
 
                 scipy.misc.imsave(output_image_filename, img1)
+                return i, (bb8, Dx, Dy, Dz)
 
-        if i % int(0.1 * len_datasets) == 0:
-            print('percent: %s' % int(round((100 * i / len_datasets))))
-
-        return i, (bb8, Dx, Dy, Dz)
+        return i, None
 
     if num_cores > 1:
         results = Parallel(n_jobs=num_cores)(delayed(processData)(i) for i in range(len_datasets))
@@ -67,7 +67,8 @@ def main():
 
     for i, bb8_result in results:
         if bb8_result is not None:
-            bb8_points[i] = bb8_result
+            bb8, Dx, Dy, Dz = bb8_result
+            bb8_points[i] = np.append(bb8.flatten(), [[Dx], [Dy], [Dz]])
 
     np.save(bb8_dict_file, bb8_points)
 
