@@ -8,12 +8,15 @@ import numpy as np
 from joblib import Parallel, delayed
 import multiprocessing
 
+
 def main():
     data_type = 'all'
-    dataset1 = pascal3d.dataset.Pascal3DDataset(data_type,
-                                                pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet)
     dataset2 = pascal3d.dataset.Pascal3DDataset(data_type,
+                                                pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet)
+    dataset1 = pascal3d.dataset.Pascal3DDataset(data_type,
                                                 pascal3d.dataset.Pascal3DDataset.dataset_source_enum.pascal)
+    len_datasets = len(dataset1) + len(dataset2)
+
     output_directory = os.path.expanduser('~/Documents/UCL/PROJECT/DATA/BB8_PASCAL_DATA')
     bb8_dict_file = osp.join(output_directory, 'bb8_points')
     image_file_type = '.jpg'
@@ -47,22 +50,26 @@ def main():
                 bb8_points[i] = bb8
 
                 dir_name = osp.dirname(output_image_filename)
-                if not osp.isdir(dir_name): #
+                if not osp.isdir(dir_name):
                     os.makedirs(dir_name)
 
                 scipy.misc.imsave(output_image_filename, img1)
-        if i % int(0.1 * (len(dataset1)+len(dataset2))) == 0:
-            print('percent: %s' % int(round((100 * i / (len(dataset1)+len(dataset2))))))
 
-        return (i, bb8)
+        if i % int(0.1 * len_datasets) == 0:
+            print('percent: %s' % int(round((100 * i / len_datasets))))
 
-    results = Parallel(n_jobs=num_cores)(delayed(processData)(i) for i in range(len(dataset1) + len(dataset2)))
-    for (i, bb8_result) in results:
-        if not bb8_result is None:
+        return i, bb8
+
+    if num_cores > 1:
+        results = Parallel(n_jobs=num_cores)(delayed(processData)(i) for i in range(len_datasets))
+    else:
+        results = [processData(i) for i in range(len_datasets)]
+
+    for i, bb8_result in results:
+        if bb8_result is not None:
             bb8_points[i] = bb8_result
 
-    np.savez(bb8_dict_file, bb8_points)
-
+    np.save(bb8_dict_file, bb8_points)
 
 
 if __name__ == '__main__':
