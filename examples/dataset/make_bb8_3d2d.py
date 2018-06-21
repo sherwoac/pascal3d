@@ -15,13 +15,13 @@ def main():
                                                 pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet)
     dataset1 = pascal3d.dataset.Pascal3DDataset(data_type,
                                                 pascal3d.dataset.Pascal3DDataset.dataset_source_enum.pascal)
-    len_datasets = len(dataset1) + len(dataset2)
+    len_datasets = 10 #len(dataset1) + len(dataset2)
 
     output_directory = os.path.expanduser('~/Documents/UCL/PROJECT/DATA/BB8_PASCAL_DATA')
     bb8_dict_file = osp.join(output_directory, 'bb8_points')
     image_file_type = '.jpg'
     bb8_points = {}
-    num_cores = 1 #multiprocessing.cpu_count()
+    num_cores = multiprocessing.cpu_count()
 
     def processData(i):
         if i >= len(dataset1):
@@ -68,7 +68,10 @@ def main():
     for i, bb8_result in results:
         if bb8_result is not None:
             bb8, Dx, Dy, Dz = bb8_result
-            bb8_points[i] = np.append(bb8.flatten(), [[Dx], [Dy], [Dz]])
+            bb8_flat = np.append(bb8.flatten(), [[Dx], [Dy], [Dz]])
+            assert bb8_flat.shape == (19,), "incorrect bb8 pack size"
+            bb8_points[i] = bb8_flat
+
 
     np.save(bb8_dict_file, bb8_points)
 

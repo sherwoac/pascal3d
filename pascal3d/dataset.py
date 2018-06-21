@@ -310,10 +310,16 @@ class Pascal3DDataset(object):
             bb83d[6] = [xMax, yMax, zMin]
             bb83d[7] = [xMax, yMax, zMax]
 
+            # cube size, Dx, Dy, Dz
+            Dx = xMax - xMin
+            Dy = yMax - yMin
+            Dz = zMax - zMin
+
+
             bb8_vertices_2d = utils.project_points_3d_to_2d(
               bb83d, **obj['viewpoint'])
 
-            bb8s.append(bb8_vertices_2d)
+            bb8s.append((bb8_vertices_2d, Dx, Dy, Dz))
 
         return bb8s
 
