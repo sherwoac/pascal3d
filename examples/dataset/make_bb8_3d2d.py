@@ -22,7 +22,7 @@ def main():
     bb8_dict_file = osp.join(output_directory, 'bb8_points')
     image_file_type = '.jpg'
     bb8_points = {}
-    num_cores = 1# multiprocessing.cpu_count()
+    num_cores = multiprocessing.cpu_count()
 
     def processData(i):
         if i >= len(dataset1):
