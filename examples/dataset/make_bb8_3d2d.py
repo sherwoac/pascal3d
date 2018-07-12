@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import pascal3d
+from pascal3d import utils
 import os.path as osp
 import os
 import scipy.misc
@@ -21,7 +22,7 @@ def main():
     bb8_dict_file = osp.join(output_directory, 'bb8_points')
     image_file_type = '.jpg'
     bb8_points = {}
-    num_cores = multiprocessing.cpu_count()
+    num_cores = 1# multiprocessing.cpu_count()
 
     def processData(i):
         if i >= len(dataset1):
@@ -40,7 +41,7 @@ def main():
         if len(data['objects']) == 1:
             img1 = data['img']
             class_dir = data['objects'][0][0]
-            output_image_filename = osp.join(output_directory, class_dir, class_dir +'_' + '{0:05d}'.format(dataset_index) + image_file_type)
+            output_image_filename = osp.join(output_directory, class_dir, class_dir +'_' + '{0:05d}'.format(i) + image_file_type)
             bb8s = dataset.camera_transform_cad_bb8(data)
             assert len(bb8s) == 1, 'more than one bb8?'
             (bb8, Dx, Dy, Dz) = bb8s[0]
@@ -56,7 +57,15 @@ def main():
                     os.makedirs(dir_name)
 
                 scipy.misc.imsave(output_image_filename, img1)
-                return i, (bb8, Dx, Dy, Dz)
+
+                # add ground truth camera
+                obj = data['objects'][0][1]
+                R_gt = utils.get_transformation_matrix(
+                    obj['viewpoint']['azimuth'],
+                    obj['viewpoint']['elevation'],
+                    obj['viewpoint']['distance'],
+                )
+                return i, (bb8, (Dx, Dy, Dz), R_gt)
 
         return i, None
 
@@ -67,11 +76,8 @@ def main():
 
     for i, bb8_result in results:
         if bb8_result is not None:
-            bb8, Dx, Dy, Dz = bb8_result
-            bb8_flat = np.append(bb8.flatten(), [[Dx], [Dy], [Dz]])
-            assert bb8_flat.shape == (19,), "incorrect bb8 pack size"
-            bb8_points[i] = bb8_flat
-
+            assert len(bb8_result) == 3, "incorrect label pack size"
+            bb8_points[i] = bb8_result
 
     np.save(bb8_dict_file, bb8_points)
 
