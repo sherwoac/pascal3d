@@ -44,7 +44,7 @@ def main():
             output_image_filename = osp.join(output_directory, class_dir, class_dir +'_' + '{0:05d}'.format(i) + image_file_type)
             bb8s = dataset.camera_transform_cad_bb8(data)
             assert len(bb8s) == 1, 'more than one bb8?'
-            (bb8, Dx, Dy, Dz) = bb8s[0]
+            (bb8, Dx, Dy, Dz, bb83d) = bb8s[0]
             x_values, y_values = np.split(np.transpose(bb8), 2)
 
             if np.min(x_values) > 0 \
@@ -65,7 +65,7 @@ def main():
                     obj['viewpoint']['elevation'],
                     obj['viewpoint']['distance'],
                 )
-                return i, (bb8, (Dx, Dy, Dz), R_gt)
+                return i, (bb8, (Dx, Dy, Dz), R_gt, bb83d)
 
         return i, None
 
@@ -76,7 +76,7 @@ def main():
 
     for i, bb8_result in results:
         if bb8_result is not None:
-            assert len(bb8_result) == 3, "incorrect label pack size"
+            assert len(bb8_result) == 4, "incorrect label pack size"
             bb8_points[i] = bb8_result
 
     np.save(bb8_dict_file, bb8_points)

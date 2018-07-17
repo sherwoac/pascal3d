@@ -319,7 +319,7 @@ class Pascal3DDataset(object):
             bb8_vertices_2d = utils.project_points_3d_to_2d(
               bb83d, **obj['viewpoint'])
 
-            bb8s.append((bb8_vertices_2d, Dx, Dy, Dz))
+            bb8s.append((bb8_vertices_2d, Dx, Dy, Dz, bb83d))
 
         return bb8s
 
