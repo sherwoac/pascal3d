@@ -13,28 +13,41 @@ import multiprocessing
 
 num_cores = multiprocessing.cpu_count()
 cropped_image_size = (224, 224)
-data_columns = ['id', 'file_name', 'test', '2d_bb8', '3d_bb8', 'D', 'gt_camera_pose']
+data_columns = ['id', 'file_name', '2d_bb8', '3d_bb8', 'D', 'gt_camera_pose']
 
 def main():
     output_directory = os.path.expanduser('~/Documents/UCL/PROJECT/DATA/BB8_PASCAL_DATA/')
-    test_output_directory = os.path.join(output_directory, 'TEST')
-    test_data_set = pascal3d.dataset.Pascal3DDataset('val', pascal3d.dataset.Pascal3DDataset.dataset_source_enum.pascal)
-    df_test = create_data(test_data_set, test_output_directory, 0, is_test=True)
+    pascal_data_set = pascal3d.dataset.Pascal3DDataset('all', pascal3d.dataset.Pascal3DDataset.dataset_source_enum.pascal)
 
-    train_output_directory = os.path.join(output_directory, 'TRAIN')
-    train_pascal_data_set = pascal3d.dataset.Pascal3DDataset('train', pascal3d.dataset.Pascal3DDataset.dataset_source_enum.pascal)
-    df_train1 = create_data(train_pascal_data_set,
-                            train_output_directory,
-                            len(test_data_set),
+    # get image set membership
+    pascal_image_set_val_dataframe = pascal_data_set.load_image_set_files('val')
+    #pascal_image_set_test_dataframe = pascal_data_set.load_image_set_files('test')
+    pascal_image_set_train_dataframe = pascal_data_set.load_image_set_files('train')
+
+    df_pascal = create_data(pascal_data_set,
+                            output_directory,
+                            offset=0,
                             is_test=False)
-    train_imagenet_data_set = pascal3d.dataset.Pascal3DDataset('all',
+
+    df_pascal = df_pascal.merge(pascal_image_set_val_dataframe, left_on='file_name', right_on='file_name')
+    df_pascal = df_pascal.merge(pascal_image_set_train_dataframe, left_on='file_name', right_on='file_name')
+
+    imagenet_data_set = pascal3d.dataset.Pascal3DDataset('all',
                                                                pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet)
-    df_train2 = create_data(train_imagenet_data_set,
-                            train_output_directory,
-                            len(test_data_set) + len(train_imagenet_data_set),
-                            is_test=False)
 
-    all_data = pd.concat([df_test, df_train1, df_train2])
+    imagenet_image_set_val_dataframe = pascal_data_set.load_image_set_files('val')
+    #imagenet_image_set_test_dataframe = pascal_data_set.load_image_set_files('test')
+    imagenet_image_set_train_dataframe = pascal_data_set.load_image_set_files('train')
+
+    df_imagenet = create_data(imagenet_data_set,
+                              output_directory,
+                              len(pascal_data_set),
+                              is_test=False)
+
+    df_imagenet = df_imagenet.merge(imagenet_image_set_val_dataframe, left_on='file_name', right_on='file_name')
+    df_imagenet = df_imagenet.merge(imagenet_image_set_train_dataframe, left_on='file_name', right_on='file_name')
+    all_data = pd.concat([df_pascal, df_imagenet])
+
     store = pd.HDFStore(os.path.join(output_directory, 'pascal3d_data_frame.h5'))
     store['df'] = all_data
 
@@ -86,19 +99,7 @@ def process_data(data_set_index, offset, data_set, output_directory, is_test, im
             if not osp.isdir(dir_name):
                 os.makedirs(dir_name)
 
-            if is_test:
-                bb_x_min, bb_y_min, bb_x_max, bb_y_max = object[1]['bbox']
-                if bb_x_min > bb82d_x_min or \
-                        bb_y_min > bb82d_y_min or \
-                        bb_x_max < bb82d_x_max or \
-                        bb_y_max < bb82d_y_max:
-                    print('bb8 outside 2d bb class: {} id: {}'.format(class_name, overall_id))
-
-                cropped_image = original_image[bb_y_min:bb_y_max+1, bb_x_min:bb_x_max+1, :]
-                resized_image = cv2.resize(cropped_image, cropped_image_size)
-                scipy.misc.imsave(output_image_filename, resized_image)
-            else:
-                scipy.misc.imsave(output_image_filename, original_image)
+            scipy.misc.imsave(output_image_filename, original_image)
 
             # add ground truth camera
             obj = object[1]
@@ -110,7 +111,6 @@ def process_data(data_set_index, offset, data_set, output_directory, is_test, im
 
             return pd.DataFrame([[overall_id,
                                   output_image_filename,
-                                  is_test,
                                   bb8,
                                   bb83d,
                                   (Dx, Dy, Dz),
@@ -121,4 +121,3 @@ def process_data(data_set_index, offset, data_set, output_directory, is_test, im
 
 if __name__ == '__main__':
     main()
-    print(illegal_bb_count)

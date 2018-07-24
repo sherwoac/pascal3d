@@ -25,8 +25,11 @@ import scipy.misc
 import skimage.color
 import sklearn.model_selection
 import tqdm
+import pandas as pd
+
 
 from pascal3d import utils
+
 
 
 class Pascal3DAnnotation(object):
@@ -126,6 +129,7 @@ class Pascal3DDataset(object):
     def __init__(self, data_type, dataset_source = dataset_source_enum.pascal):
         assert data_type in ('train', 'val', 'all')
         assert isinstance(dataset_source, self.dataset_source_enum), "unknown data source"
+        self.dataset_source = dataset_source
 
         #self.dataset_dir = osp.expanduser('~/data/datasets/Pascal3D/PASCAL3D+_release1.1')
         self.dataset_dir = osp.expanduser('~/Documents/UCL/PROJECT/DATA/PASCAL3D+_release1.1')
@@ -163,6 +167,31 @@ class Pascal3DDataset(object):
 
     def __len__(self):
         return len(self.data_ids)
+
+    def load_image_set_files(self, file_ending = 'val'):
+        files_dataframe = pd.DataFrame(columns=[file_ending, 'file_name'])
+        if self.dataset_source == self.dataset_source_enum.pascal:
+            image_set_directory=os.path.join(self.dataset_dir, 'PASCAL/VOCdevkit/VOC2012/ImageSets/Main')
+            class_file_proto = os.path.join(image_set_directory, '{}_' + file_ending + '.txt')
+
+        elif self.dataset_source == self.dataset_source_enum.imagenet:
+            image_set_directory = os.path.join(self.dataset_dir, 'Image_sets')
+            class_file_proto = os.path.join(image_set_directory, '{}_imagenet_' + file_ending + '.txt')
+
+        for class_name in self.class_names[1:]:
+            class_file = class_file_proto.format(class_name)
+            class_file_handle = open(class_file, "r")
+            text_file_lines = class_file_handle.readlines()
+            for text_line in text_file_lines:
+                if (text_line.split(' ')[1] and int(text_line.split(' ')[1]) == 1) or \
+                        not text_line.split(' ')[1]: # only take the positive examples from VOC
+                    validation_file_name = text_line.split(' ')[0] + '.jpg'
+                    df_temp = pd.DataFrame([True, validation_file_name])
+                    files_dataframe.append(df_temp)
+
+            class_file_handle.close()
+
+        return files_dataframe
 
     def get_data(self, i):
         data_id = self.data_ids[i]
