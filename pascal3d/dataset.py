@@ -323,6 +323,46 @@ class Pascal3DDataset(object):
 
         return bb8s
 
+    def camera_transform_cad_bb8_object(self, cls, obj, class_cads):
+        """ get model i and do camera transform"""
+
+        bb8s = []
+        # for each annotated object
+        cad_index = obj['cad_index']
+        cad = class_cads[cls][cad_index]
+
+        vertices_3d = cad['vertices']
+        v3dT = np.transpose(vertices_3d)
+        xMin = np.min(v3dT[0])
+        xMax = np.max(v3dT[0])
+        yMin = np.min(v3dT[1])
+        yMax = np.max(v3dT[1])
+        zMin = np.min(v3dT[2])
+        zMax = np.max(v3dT[2])
+
+        # 3D bounding box
+        bb83d = np.empty([8,3], dtype=np.float)
+        # front
+        bb83d[0] = [xMin, yMin, zMin]
+        bb83d[1] = [xMin, yMin, zMax]
+        bb83d[2] = [xMax, yMin, zMin]
+        bb83d[3] = [xMax, yMin, zMax]
+        # ..and back faces
+        bb83d[4] = [xMin, yMax, zMin]
+        bb83d[5] = [xMin, yMax, zMax]
+        bb83d[6] = [xMax, yMax, zMin]
+        bb83d[7] = [xMax, yMax, zMax]
+
+        bb8_vertices_2d = utils.project_points_3d_to_2d(
+          bb83d, **obj['viewpoint'])
+
+        # cube size, Dx, Dy, Dz
+        Dx = xMax - xMin
+        Dy = yMax - yMin
+        Dz = zMax - zMin
+
+        return (bb8_vertices_2d, Dx, Dy, Dz, bb83d)
+
     def show_cad(self, i, camframe=False):
         if camframe:
             return self.show_cad_camframe(i)
