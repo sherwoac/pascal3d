@@ -205,6 +205,7 @@ class Pascal3DDataset(object):
             'objects': [],
             'class_cads': {},
             'label_cls': None,
+            'data_id': data_id,
         }
         for class_name in self.class_names[1:]:
             cls_ann_dir = self.annotation_directory.format(class_name)

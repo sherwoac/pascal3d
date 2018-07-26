@@ -13,7 +13,6 @@ import multiprocessing
 
 num_cores = multiprocessing.cpu_count()
 cropped_image_size = (224, 224)
-data_columns = ['id', 'file_name', '2d_bb8', '3d_bb8', 'D', 'gt_camera_pose']
 
 def main():
     output_directory = os.path.expanduser('~/Documents/UCL/PROJECT/DATA/BB8_PASCAL_DATA/')
@@ -27,12 +26,17 @@ def main():
     pascal_image_set_train_dataframe['val'] = False
     df_pascal_train_val = pd.concat([pascal_image_set_val_dataframe, pascal_image_set_train_dataframe])
 
-    df_pascal = create_data(pascal_data_set,
-                            output_directory,
-                            offset=0)
+    df_pascal = create_data(pascal_data_set, offset=0)
+    print(df_pascal.shape)
+    print(df_pascal_train_val.shape)
+    print(df_pascal.columns.values)
+    print(df_pascal_train_val.columns.values)
 
-    df_pascal = df_pascal.merge(df_pascal_train_val, left_on='file_name', right_on='file_name')
-    df_pascal = df_pascal['pascal'] = True
+    df_pascal_merged = pd.merge(df_pascal, df_pascal_train_val, on=['file_name'], how='inner')
+    print(df_pascal_merged.shape)
+    df_pascal_merged['pascal'] = True
+    print(df_pascal_merged.shape)
+    print(df_pascal_merged.columns.values)
 
     imagenet_data_set = pascal3d.dataset.Pascal3DDataset('all',
                                                                pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet)
@@ -44,39 +48,38 @@ def main():
     imagenet_image_set_train_dataframe['train'] = False
     df_imagenet_train_val = pd.concat([imagenet_image_set_val_dataframe, imagenet_image_set_train_dataframe])
 
-    df_imagenet = create_data(imagenet_data_set,
-                              output_directory,
-                              len(pascal_data_set))
+    df_imagenet = create_data(imagenet_data_set, len(pascal_data_set))
 
-    df_imagenet = df_imagenet.merge(df_imagenet_train_val, left_on='file_name', right_on='file_name')
-    df_imagenet['pascal'] = False
-    all_data = pd.concat([df_pascal, df_imagenet])
+    df_imagenet_merged = pd.merge(df_imagenet, df_imagenet_train_val, on=['file_name'], how='inner')
+    df_imagenet_merged['pascal'] = False
+
+    all_data = pd.concat([df_pascal_merged, df_imagenet_merged])
 
     store = pd.HDFStore(os.path.join(output_directory, 'pascal3d_data_frame.h5'))
     store['df'] = all_data
 
 
-def create_data(data_set, output_directory, offset):
-
-    if not os.path.exists(output_directory):
-        os.mkdir(output_directory)
+def create_data(data_set, offset):
 
     if num_cores > 1:
-        results = Parallel(n_jobs=num_cores)(delayed(process_data)(i, offset, data_set, output_directory) for i in range(len(data_set)))
+        results = Parallel(n_jobs=num_cores)(delayed(process_data)(i, offset, data_set) for i in range(len(data_set)))
     else:
-        results = [process_data(i, offset, data_set, output_directory) for i in range(len(data_set))]
+        results = [process_data(i, offset, data_set) for i in range(len(data_set))]
 
     return pd.concat(results)
 
 
-def process_data(data_set_index, offset, data_set, output_directory, image_file_type=".jpg"):
+def process_data(data_set_index, offset, data_set):
+    columns = ['file_name', 'class_name', '2d_bb8', '3d_bb8', 'D', 'gt_camera_pose', 'image']
     data = data_set.get_data(data_set_index)
+    image_file_name = data['data_id']
     overall_id = offset + data_set_index
     if data_set_index % int(0.1 * len(data_set)) == 0:
         print('percent: %s' % int(round((100 * data_set_index / len(data_set)))))
 
     class_cads = data['class_cads']
     # only want to train against singular examples
+    df_return = pd.DataFrame(columns=columns)
     for object in data['objects']:
         if object[1]['truncated'] or object[1]['occluded']:
             continue
@@ -97,15 +100,7 @@ def process_data(data_set_index, offset, data_set, output_directory, image_file_
                 and bb82d_x_max < image_width \
                 and bb82d_y_max < image_height:
 
-            output_image_filename = osp.join(output_directory,
-                                             class_name,
-                                             class_name + '_' + '{0:05d}'.format(overall_id) + image_file_type)
 
-            dir_name = osp.dirname(output_image_filename)
-            if not osp.isdir(dir_name):
-                os.makedirs(dir_name)
-
-            scipy.misc.imsave(output_image_filename, original_image)
 
             # add ground truth camera
             obj = object[1]
@@ -114,16 +109,17 @@ def process_data(data_set_index, offset, data_set, output_directory, image_file_
                 obj['viewpoint']['elevation'],
                 obj['viewpoint']['distance'],
             )
+            df_this_one = pd.DataFrame([[image_file_name,
+                                         class_name,
+                                         bb8,
+                                         bb83d,
+                                         (Dx, Dy, Dz),
+                                         R_gt,
+                                         original_image]], columns = columns)
 
-            return pd.DataFrame([[overall_id,
-                                  output_image_filename,
-                                  bb8,
-                                  bb83d,
-                                  (Dx, Dy, Dz),
-                                  R_gt]], columns=['id', 'file_name', '2d_bb8', '3d_bb8', 'D', 'gt_camera_pose'])
+            df_return = pd.concat([df_return, df_this_one])
 
-    return None
-
+    return df_return
 
 if __name__ == '__main__':
     main()
