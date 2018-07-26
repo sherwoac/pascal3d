@@ -27,16 +27,9 @@ def main():
     df_pascal_train_val = pd.concat([pascal_image_set_val_dataframe, pascal_image_set_train_dataframe])
 
     df_pascal = create_data(pascal_data_set, offset=0)
-    print(df_pascal.shape)
-    print(df_pascal_train_val.shape)
-    print(df_pascal.columns.values)
-    print(df_pascal_train_val.columns.values)
 
     df_pascal_merged = pd.merge(df_pascal, df_pascal_train_val, on=['file_name'], how='inner')
-    print(df_pascal_merged.shape)
     df_pascal_merged['pascal'] = True
-    print(df_pascal_merged.shape)
-    print(df_pascal_merged.columns.values)
 
     imagenet_data_set = pascal3d.dataset.Pascal3DDataset('all',
                                                                pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet)
