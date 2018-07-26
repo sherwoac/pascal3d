@@ -53,6 +53,8 @@ class Pascal3DAnnotation(object):
             cad_index = obj['cad_index'][0][0] - 1
             bbox = obj['bbox'][0]
             anchors = obj['anchors']
+            occluded = np.any(obj['occluded'][0] == 1)
+            truncated = np.any(obj['truncated'][0] == 1)
 
             viewpoint = obj['viewpoint']
             azimuth = viewpoint['azimuth'][0][0][0][0] * math.pi / 180
@@ -68,6 +70,8 @@ class Pascal3DAnnotation(object):
                 'cad_index': cad_index,
                 'bbox': bbox,
                 'anchors': anchors,
+                'occluded': occluded,
+                'truncated': truncated,
                 'viewpoint': {
                     'azimuth': azimuth,
                     'elevation': elevation,
@@ -126,7 +130,7 @@ class Pascal3DDataset(object):
         'tvmonitor',
     ]
 
-    def __init__(self, data_type, dataset_source = dataset_source_enum.pascal):
+    def __init__(self, data_type, dataset_source = dataset_source_enum.pascal, use_split_file=False):
         assert data_type in ('train', 'val', 'all')
         assert isinstance(dataset_source, self.dataset_source_enum), "unknown data source"
         self.dataset_source = dataset_source
@@ -152,28 +156,30 @@ class Pascal3DDataset(object):
         print('Done.')
         data_ids = list(set(data_ids))
         # split data to train and val
-        if not data_type == 'all':
-            ids_train, ids_val = sklearn.model_selection.train_test_split(
-                data_ids, test_size=0.25, random_state=1234)
+        if use_split_file:
+            self.data_ids = self.load_image_set_files(data_type)
         else:
-            data_ids = sorted(data_ids) #  keep them in order for replicability
+            if not data_type == 'all':
+                ids_train, ids_val = sklearn.model_selection.train_test_split(
+                    data_ids, test_size=0.25, random_state=1234)
+            else:
+                data_ids = sorted(data_ids) #  keep them in order for replicability
 
-        if data_type == 'train':
-            self.data_ids = ids_train
-        elif data_type == 'val':
-            self.data_ids = ids_val
-        else: #  'all'
-            self.data_ids = data_ids
+            if data_type == 'train':
+                self.data_ids = ids_train
+            elif data_type == 'val':
+                self.data_ids = ids_val
+            else: #  'all'
+                self.data_ids = data_ids
 
     def __len__(self):
         return len(self.data_ids)
 
-    def load_image_set_files(self, file_ending = 'val'):
-        files_dataframe = pd.DataFrame(columns=[file_ending, 'file_name'])
+    def load_image_set_files(self, file_ending='val'):
+        files_dataframe = pd.DataFrame(columns=['file_name'])
         if self.dataset_source == self.dataset_source_enum.pascal:
             image_set_directory=os.path.join(self.dataset_dir, 'PASCAL/VOCdevkit/VOC2012/ImageSets/Main')
             class_file_proto = os.path.join(image_set_directory, '{}_' + file_ending + '.txt')
-
         elif self.dataset_source == self.dataset_source_enum.imagenet:
             image_set_directory = os.path.join(self.dataset_dir, 'Image_sets')
             class_file_proto = os.path.join(image_set_directory, '{}_imagenet_' + file_ending + '.txt')
@@ -184,13 +190,11 @@ class Pascal3DDataset(object):
             text_file_lines = class_file_handle.readlines()
             for text_line in text_file_lines:
                 if (text_line.split(' ')[1] and int(text_line.split(' ')[1]) == 1) or \
-                        not text_line.split(' ')[1]: # only take the positive examples from VOC
-                    validation_file_name = text_line.split(' ')[0] + '.jpg'
-                    df_temp = pd.DataFrame([True, validation_file_name])
-                    files_dataframe.append(df_temp)
+                        not text_line.split(' ')[1]:  # only take the positive examples from VOC
+                    validation_file_name = text_line.split(' ')[0]
+                    files_dataframe = files_dataframe.append({'file_name': validation_file_name}, ignore_index=True)
 
             class_file_handle.close()
-
         return files_dataframe
 
     def get_data(self, i):
@@ -252,32 +256,32 @@ class Pascal3DDataset(object):
         img = data['img']
         objects = data['objects']
         label_cls = data['label_cls']
+        if label_cls:
+            ax1 = plt.subplot(121)
+            plt.axis('off')
 
-        ax1 = plt.subplot(121)
-        plt.axis('off')
+            ax2 = plt.subplot(122)
+            plt.axis('off')
+            label_viz = skimage.color.label2rgb(label_cls, bg_label=0)
+            ax2.imshow(label_viz)
 
-        ax2 = plt.subplot(122)
-        plt.axis('off')
-        label_viz = skimage.color.label2rgb(label_cls, bg_label=0)
-        ax2.imshow(label_viz)
+            for cls, obj in objects:
+                x1, y1, x2, y2 = obj['bbox']
+                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0))
 
-        for cls, obj in objects:
-            x1, y1, x2, y2 = obj['bbox']
-            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0))
-
-            if not obj['anchors']:
-                continue
-            anchors = obj['anchors'][0][0]
-            for name in anchors.dtype.names:
-                anchor = anchors[name]
-                if anchor['status'] != 1:
+                if not obj['anchors']:
                     continue
-                x, y = anchor['location'][0][0][0]
-                cv2.circle(img, (int(x), int(y)), 5, (255, 0, 0), -1)
-        ax1.imshow(img)
+                anchors = obj['anchors'][0][0]
+                for name in anchors.dtype.names:
+                    anchor = anchors[name]
+                    if anchor['status'] != 1:
+                        continue
+                    x, y = anchor['location'][0][0][0]
+                    cv2.circle(img, (int(x), int(y)), 5, (255, 0, 0), -1)
+            ax1.imshow(img)
 
-        plt.tight_layout()
-        plt.show()
+            plt.tight_layout()
+            plt.show()
 
     def show_bb8(self, i):
         """ show bb8 2d/3d """
@@ -398,6 +402,7 @@ class Pascal3DDataset(object):
 
         data = self.get_data(i)
         img = data['img']
+
         objects = data['objects']
         class_cads = data['class_cads']
 
@@ -405,7 +410,7 @@ class Pascal3DDataset(object):
             # show image
             ax1 = plt.subplot(1, 2, 1)
             plt.axis('off')
-            ax1.imshow(img)
+
 
             ax2 = plt.subplot(1, 2, 2, projection='3d')
 
@@ -427,6 +432,39 @@ class Pascal3DDataset(object):
                 obj['viewpoint']['elevation'],
                 obj['viewpoint']['distance'],
             )
+            (bb8, Dx, Dy, Dz, bb83d) = self.camera_transform_cad_bb8_object(cls,
+                                                                            obj,
+                                                                            class_cads)
+
+            pts = np.transpose(np.reshape(bb8[0:16], [8, 2])).astype(np.int32)
+            front_face_pts = pts[:, 0:4].T
+            back_face_pts = pts[:, 4:8].T
+
+            inferred_front_square_colour = (255, 0, 0)
+            inferred_front_line_colour = (255, 255, 0)
+            bbox_colour = (0, 255, 0)
+
+            # front and back faces
+            cv2.polylines(img, [front_face_pts], True, inferred_front_square_colour)
+            cv2.polylines(img, [back_face_pts], True, inferred_front_line_colour)
+
+            # side lines
+            for line_number in range(4):
+                pt1 = front_face_pts[line_number]
+                pt2 = back_face_pts[line_number]
+                cv2.line(img, (pt1[0], pt1[1]), (pt2[0], pt2[1]), inferred_front_line_colour)
+
+            bbox = np.zeros(shape=(4, 2), dtype=np.int32)
+            xmin, ymin, xmax, ymax = obj['bbox']
+            bbox[0] = [xmin, ymin]
+            bbox[1] = [xmin, ymax]
+            bbox[2] = [xmax, ymax]
+            bbox[3] = [xmax, ymin]
+            cv2.rectangle(img, (xmin, ymin), (xmax, ymax), color=bbox_colour, thickness=2)
+            get_new_bb()
+
+            ax1.imshow(img)
+
             x = np.hstack((x, np.ones((len(x), 1), dtype=np.float64)))
             x = np.dot(np.linalg.inv(R)[:3, :4], x.T).T
             x0, x1, x2, x3, x4 = x

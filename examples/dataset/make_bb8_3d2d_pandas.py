@@ -21,51 +21,55 @@ def main():
 
     # get image set membership
     pascal_image_set_val_dataframe = pascal_data_set.load_image_set_files('val')
+    pascal_image_set_val_dataframe['val'] = True
     #pascal_image_set_test_dataframe = pascal_data_set.load_image_set_files('test')
     pascal_image_set_train_dataframe = pascal_data_set.load_image_set_files('train')
+    pascal_image_set_train_dataframe['val'] = False
+    df_pascal_train_val = pd.concat([pascal_image_set_val_dataframe, pascal_image_set_train_dataframe])
 
     df_pascal = create_data(pascal_data_set,
                             output_directory,
-                            offset=0,
-                            is_test=False)
+                            offset=0)
 
-    df_pascal = df_pascal.merge(pascal_image_set_val_dataframe, left_on='file_name', right_on='file_name')
-    df_pascal = df_pascal.merge(pascal_image_set_train_dataframe, left_on='file_name', right_on='file_name')
+    df_pascal = df_pascal.merge(df_pascal_train_val, left_on='file_name', right_on='file_name')
+    df_pascal = df_pascal['pascal'] = True
 
     imagenet_data_set = pascal3d.dataset.Pascal3DDataset('all',
                                                                pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet)
 
     imagenet_image_set_val_dataframe = pascal_data_set.load_image_set_files('val')
+    imagenet_image_set_val_dataframe['val'] = True
     #imagenet_image_set_test_dataframe = pascal_data_set.load_image_set_files('test')
     imagenet_image_set_train_dataframe = pascal_data_set.load_image_set_files('train')
+    imagenet_image_set_train_dataframe['train'] = False
+    df_imagenet_train_val = pd.concat([imagenet_image_set_val_dataframe, imagenet_image_set_train_dataframe])
 
     df_imagenet = create_data(imagenet_data_set,
                               output_directory,
-                              len(pascal_data_set),
-                              is_test=False)
+                              len(pascal_data_set))
 
-    df_imagenet = df_imagenet.merge(imagenet_image_set_val_dataframe, left_on='file_name', right_on='file_name')
-    df_imagenet = df_imagenet.merge(imagenet_image_set_train_dataframe, left_on='file_name', right_on='file_name')
+    df_imagenet = df_imagenet.merge(df_imagenet_train_val, left_on='file_name', right_on='file_name')
+    df_imagenet['pascal'] = False
     all_data = pd.concat([df_pascal, df_imagenet])
 
     store = pd.HDFStore(os.path.join(output_directory, 'pascal3d_data_frame.h5'))
     store['df'] = all_data
 
 
-def create_data(data_set, output_directory, offset, is_test):
+def create_data(data_set, output_directory, offset):
 
     if not os.path.exists(output_directory):
         os.mkdir(output_directory)
 
     if num_cores > 1:
-        results = Parallel(n_jobs=num_cores)(delayed(process_data)(i, offset, data_set, output_directory, is_test) for i in range(len(data_set)))
+        results = Parallel(n_jobs=num_cores)(delayed(process_data)(i, offset, data_set, output_directory) for i in range(len(data_set)))
     else:
-        results = [process_data(i, offset, data_set, output_directory, is_test) for i in range(len(data_set))]
+        results = [process_data(i, offset, data_set, output_directory) for i in range(len(data_set))]
 
     return pd.concat(results)
 
 
-def process_data(data_set_index, offset, data_set, output_directory, is_test, image_file_type=".jpg"):
+def process_data(data_set_index, offset, data_set, output_directory, image_file_type=".jpg"):
     data = data_set.get_data(data_set_index)
     overall_id = offset + data_set_index
     if data_set_index % int(0.1 * len(data_set)) == 0:
@@ -74,6 +78,8 @@ def process_data(data_set_index, offset, data_set, output_directory, is_test, im
     class_cads = data['class_cads']
     # only want to train against singular examples
     for object in data['objects']:
+        if object[1]['truncated'] or object[1]['occluded']:
+            continue
         original_image = data['img']
         image_height = original_image.shape[0]
         image_width = original_image.shape[1]
@@ -114,7 +120,7 @@ def process_data(data_set_index, offset, data_set, output_directory, is_test, im
                                   bb8,
                                   bb83d,
                                   (Dx, Dy, Dz),
-                                  R_gt]], columns=data_columns)
+                                  R_gt]], columns=['id', 'file_name', '2d_bb8', '3d_bb8', 'D', 'gt_camera_pose'])
 
     return None
 
