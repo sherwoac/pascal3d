@@ -16,35 +16,44 @@ cropped_image_size = (224, 224)
 
 def main():
     output_directory = os.path.expanduser('~/Documents/UCL/PROJECT/DATA/BB8_PASCAL_DATA/')
-    pascal_data_set = pascal3d.dataset.Pascal3DDataset('all', pascal3d.dataset.Pascal3DDataset.dataset_source_enum.pascal)
+    pascal_data_set = pascal3d.dataset.Pascal3DDataset('all',
+                                                       pascal3d.dataset.Pascal3DDataset.dataset_source_enum.pascal,
+                                                       class_name='car')
 
     # get image set membership
-    pascal_image_set_val_dataframe = pascal_data_set.load_image_set_files('val')
+    pascal_image_set_val_dataframe = pascal_data_set.load_image_set_files('val', 'car')
+    print(pascal_image_set_val_dataframe.shape)
     pascal_image_set_val_dataframe['val'] = True
+    print(pascal_image_set_val_dataframe.shape)
     #pascal_image_set_test_dataframe = pascal_data_set.load_image_set_files('test')
-    pascal_image_set_train_dataframe = pascal_data_set.load_image_set_files('train')
+    pascal_image_set_train_dataframe = pascal_data_set.load_image_set_files('train', 'car')
     pascal_image_set_train_dataframe['val'] = False
+    print(pascal_image_set_train_dataframe.shape)
     df_pascal_train_val = pd.concat([pascal_image_set_val_dataframe, pascal_image_set_train_dataframe])
-
+    print(df_pascal_train_val.groupby(['val']).size())
     df_pascal = create_data(pascal_data_set, offset=0)
-
+    print(df_pascal.shape)
     df_pascal_merged = pd.merge(df_pascal, df_pascal_train_val, on=['file_name'], how='inner')
+    print(df_pascal_merged.shape)
     df_pascal_merged['pascal'] = True
+    print(df_pascal_merged.shape, df_pascal_merged.groupby(['class_name']).size())
 
     imagenet_data_set = pascal3d.dataset.Pascal3DDataset('all',
-                                                               pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet)
+                                                         pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet,
+                                                         class_name='car')
 
-    imagenet_image_set_val_dataframe = pascal_data_set.load_image_set_files('val')
+    imagenet_image_set_val_dataframe = pascal_data_set.load_image_set_files('val', 'car')
     imagenet_image_set_val_dataframe['val'] = True
     #imagenet_image_set_test_dataframe = pascal_data_set.load_image_set_files('test')
-    imagenet_image_set_train_dataframe = pascal_data_set.load_image_set_files('train')
-    imagenet_image_set_train_dataframe['train'] = False
+    imagenet_image_set_train_dataframe = pascal_data_set.load_image_set_files('train', 'car')
+    imagenet_image_set_train_dataframe['val'] = False
     df_imagenet_train_val = pd.concat([imagenet_image_set_val_dataframe, imagenet_image_set_train_dataframe])
 
     df_imagenet = create_data(imagenet_data_set, len(pascal_data_set))
 
     df_imagenet_merged = pd.merge(df_imagenet, df_imagenet_train_val, on=['file_name'], how='inner')
     df_imagenet_merged['pascal'] = False
+    print(df_imagenet_merged.shape)
 
     all_data = pd.concat([df_pascal_merged, df_imagenet_merged])
 
@@ -74,12 +83,14 @@ def process_data(data_set_index, offset, data_set):
     # only want to train against singular examples
     df_return = pd.DataFrame(columns=columns)
     for object in data['objects']:
+        class_name = object[0]
         if object[1]['truncated'] or object[1]['occluded']:
+            print('truncated: {} file: {}'.format(class_name, image_file_name))
             continue
         original_image = data['img']
         image_height = original_image.shape[0]
         image_width = original_image.shape[1]
-        class_name = object[0]
+
 
         (bb8, Dx, Dy, Dz, bb83d) = data_set.camera_transform_cad_bb8_object(class_name, object[1], class_cads)
         x_values, y_values = np.split(np.transpose(bb8), 2)
@@ -88,29 +99,29 @@ def process_data(data_set_index, offset, data_set):
         bb82d_y_min = np.min(y_values)
         bb82d_y_max = np.max(y_values)
         # does the bb8 fit within the frame
-        if bb82d_x_min > 0 \
+        if not bb82d_x_min > 0 \
                 and bb82d_y_min > 0 \
                 and bb82d_x_max < image_width \
                 and bb82d_y_max < image_height:
+            print('bb8 outside: {} file: {}'.format(class_name, image_file_name))
+            continue
 
+        # add ground truth camera
+        obj = object[1]
+        R_gt = utils.get_transformation_matrix(
+            obj['viewpoint']['azimuth'],
+            obj['viewpoint']['elevation'],
+            obj['viewpoint']['distance'],
+        )
+        df_this_one = pd.DataFrame([[image_file_name,
+                                     class_name,
+                                     bb8,
+                                     bb83d,
+                                     (Dx, Dy, Dz),
+                                     R_gt,
+                                     original_image]], columns = columns)
 
-
-            # add ground truth camera
-            obj = object[1]
-            R_gt = utils.get_transformation_matrix(
-                obj['viewpoint']['azimuth'],
-                obj['viewpoint']['elevation'],
-                obj['viewpoint']['distance'],
-            )
-            df_this_one = pd.DataFrame([[image_file_name,
-                                         class_name,
-                                         bb8,
-                                         bb83d,
-                                         (Dx, Dy, Dz),
-                                         R_gt,
-                                         original_image]], columns = columns)
-
-            df_return = pd.concat([df_return, df_this_one])
+        df_return = pd.concat([df_return, df_this_one])
 
     return df_return
 

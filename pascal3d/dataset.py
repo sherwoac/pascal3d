@@ -130,9 +130,12 @@ class Pascal3DDataset(object):
         'tvmonitor',
     ]
 
-    def __init__(self, data_type, dataset_source = dataset_source_enum.pascal, use_split_file=False):
+    def __init__(self, data_type, dataset_source = dataset_source_enum.pascal, use_split_file=False, class_name=None):
         assert data_type in ('train', 'val', 'all')
         assert isinstance(dataset_source, self.dataset_source_enum), "unknown data source"
+        if class_name:
+            assert class_name in self.class_names, 'class: {} not in class names: {}'.format(class_name, self.class_names)
+
         self.dataset_source = dataset_source
 
         #self.dataset_dir = osp.expanduser('~/data/datasets/Pascal3D/PASCAL3D+_release1.1')
@@ -157,7 +160,7 @@ class Pascal3DDataset(object):
         data_ids = list(set(data_ids))
         # split data to train and val
         if use_split_file:
-            self.data_ids = self.load_image_set_files(data_type)
+            self.data_ids = self.load_image_set_files(data_type, class_name)
         else:
             if not data_type == 'all':
                 ids_train, ids_val = sklearn.model_selection.train_test_split(
@@ -175,7 +178,22 @@ class Pascal3DDataset(object):
     def __len__(self):
         return len(self.data_ids)
 
-    def load_image_set_files(self, file_ending='val'):
+    @staticmethod
+    def _load_image_set_files_class_name(class_name, class_file_proto, image_set_directory):
+        files_dataframe = pd.DataFrame()
+        class_file = class_file_proto.format(class_name)
+        class_file_handle = open(class_file, "r")
+        text_file_lines = class_file_handle.readlines()
+        for text_line in text_file_lines:
+            if (text_line.split(' ')[1] and int(text_line.split(' ')[1]) == 1) or \
+                    not text_line.split(' ')[1]:  # only take the positive examples from VOC
+                validation_file_name = text_line.split(' ')[0]
+                files_dataframe = files_dataframe.append({'file_name': validation_file_name}, ignore_index=True)
+
+        class_file_handle.close()
+        return files_dataframe
+
+    def load_image_set_files(self, file_ending='val', class_name=None):
         files_dataframe = pd.DataFrame(columns=['file_name'])
         if self.dataset_source == self.dataset_source_enum.pascal:
             image_set_directory=os.path.join(self.dataset_dir, 'PASCAL/VOCdevkit/VOC2012/ImageSets/Main')
@@ -184,17 +202,19 @@ class Pascal3DDataset(object):
             image_set_directory = os.path.join(self.dataset_dir, 'Image_sets')
             class_file_proto = os.path.join(image_set_directory, '{}_imagenet_' + file_ending + '.txt')
 
-        for class_name in self.class_names[1:]:
-            class_file = class_file_proto.format(class_name)
-            class_file_handle = open(class_file, "r")
-            text_file_lines = class_file_handle.readlines()
-            for text_line in text_file_lines:
-                if (text_line.split(' ')[1] and int(text_line.split(' ')[1]) == 1) or \
-                        not text_line.split(' ')[1]:  # only take the positive examples from VOC
-                    validation_file_name = text_line.split(' ')[0]
-                    files_dataframe = files_dataframe.append({'file_name': validation_file_name}, ignore_index=True)
+        if not class_name:
+            for class_name in self.class_names[1:]:
+                df_temp = Pascal3DDataset._load_image_set_files_class_name(class_name,
+                                                                           class_file_proto,
+                                                                           image_set_directory)
+                files_dataframe = files_dataframe.append(df_temp)
+        else:
+            df_temp = Pascal3DDataset._load_image_set_files_class_name(class_name,
+                                                                       class_file_proto,
+                                                                       image_set_directory)
+            files_dataframe = files_dataframe.append(df_temp)
 
-            class_file_handle.close()
+
         return files_dataframe
 
     def get_data(self, i):
