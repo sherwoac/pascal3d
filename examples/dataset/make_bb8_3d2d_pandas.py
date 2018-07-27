@@ -2,117 +2,117 @@
 
 import pascal3d
 from pascal3d import utils
-import os.path as osp
 import os
-import scipy.misc
-import cv2
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
+import itertools
 import multiprocessing
 
 num_cores = multiprocessing.cpu_count()
 cropped_image_size = (224, 224)
 
-def main():
-    output_directory = os.path.expanduser('~/Documents/UCL/PROJECT/DATA/BB8_PASCAL_DATA/')
-    pascal_data_set = pascal3d.dataset.Pascal3DDataset('all', pascal3d.dataset.Pascal3DDataset.dataset_source_enum.pascal)
 
-    # get image set membership
-    pascal_image_set_val_dataframe = pascal_data_set.load_image_set_files('val')
-    pascal_image_set_val_dataframe['val'] = True
-    #pascal_image_set_test_dataframe = pascal_data_set.load_image_set_files('test')
-    pascal_image_set_train_dataframe = pascal_data_set.load_image_set_files('train')
-    pascal_image_set_train_dataframe['val'] = False
-    df_pascal_train_val = pd.concat([pascal_image_set_val_dataframe, pascal_image_set_train_dataframe])
+def get_pascal_datasets(data_type, class_name, dataset_source):
+    pascal_data_set_val = pascal3d.dataset.Pascal3DDataset(data_type,
+                                                           dataset_source,
+                                                           use_split_files=True,
+                                                           class_only=class_name)
 
-    df_pascal = create_data(pascal_data_set, offset=0)
-
-    df_pascal_merged = pd.merge(df_pascal, df_pascal_train_val, on=['file_name'], how='inner')
-    df_pascal_merged['pascal'] = True
-
-    imagenet_data_set = pascal3d.dataset.Pascal3DDataset('all',
-                                                               pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet)
-
-    imagenet_image_set_val_dataframe = pascal_data_set.load_image_set_files('val')
-    imagenet_image_set_val_dataframe['val'] = True
-    #imagenet_image_set_test_dataframe = pascal_data_set.load_image_set_files('test')
-    imagenet_image_set_train_dataframe = pascal_data_set.load_image_set_files('train')
-    imagenet_image_set_train_dataframe['train'] = False
-    df_imagenet_train_val = pd.concat([imagenet_image_set_val_dataframe, imagenet_image_set_train_dataframe])
-
-    df_imagenet = create_data(imagenet_data_set, len(pascal_data_set))
-
-    df_imagenet_merged = pd.merge(df_imagenet, df_imagenet_train_val, on=['file_name'], how='inner')
-    df_imagenet_merged['pascal'] = False
-
-    all_data = pd.concat([df_pascal_merged, df_imagenet_merged])
-
-    store = pd.HDFStore(os.path.join(output_directory, 'pascal3d_data_frame.h5'))
-    store['df'] = all_data
+    return pascal_data_set_val
 
 
-def create_data(data_set, offset):
+def create_data(p3d_data_set):
 
     if num_cores > 1:
-        results = Parallel(n_jobs=num_cores)(delayed(process_data)(i, offset, data_set) for i in range(len(data_set)))
+        results = Parallel(n_jobs=num_cores)(delayed(process_data)(index, row['file_name'], p3d_data_set) for index, row in p3d_data_set.data_ids.iterrows())
     else:
-        results = [process_data(i, offset, data_set) for i in range(len(data_set))]
+        results = [process_data(index, row['file_name'], p3d_data_set) for index, row in p3d_data_set.data_ids.iterrows()]
 
     return pd.concat(results)
 
 
-def process_data(data_set_index, offset, data_set):
-    columns = ['file_name', 'class_name', '2d_bb8', '3d_bb8', 'D', 'gt_camera_pose', 'image']
-    data = data_set.get_data(data_set_index)
-    image_file_name = data['data_id']
-    overall_id = offset + data_set_index
-    if data_set_index % int(0.1 * len(data_set)) == 0:
-        print('percent: %s' % int(round((100 * data_set_index / len(data_set)))))
+def process_data(index, data_set_index, p3d_data_set):
+    data = p3d_data_set.get_data(data_set_index)
+    if index % int(0.1 * len(p3d_data_set)) == 0:
+        print('percent: %s' % int(round((100 * index / len(p3d_data_set)))))
 
     class_cads = data['class_cads']
     # only want to train against singular examples
-    df_return = pd.DataFrame(columns=columns)
-    for object in data['objects']:
-        if object[1]['truncated'] or object[1]['occluded']:
-            continue
-        original_image = data['img']
-        image_height = original_image.shape[0]
-        image_width = original_image.shape[1]
-        class_name = object[0]
+    df_return = pd.DataFrame()
 
-        (bb8, Dx, Dy, Dz, bb83d) = data_set.camera_transform_cad_bb8_object(class_name, object[1], class_cads)
-        x_values, y_values = np.split(np.transpose(bb8), 2)
+    for nth_object_in_file, object in enumerate(data['objects']):
+        df_dict = {}
+        df_dict['file_name'] = data['file_name']
+        df_dict['data_source'] = data['data_source']
+        df_dict['data_set'] = data['data_set']
+
+        obj = object[1]
+        df_dict['image_data'] = data['img']
+        df_dict['class_name'] = object[0]
+        (df_dict['bb82d'], Dx, Dy, Dz, df_dict['bb83d']) = p3d_data_set.camera_transform_cad_bb8_object(df_dict['class_name'], obj, class_cads)
+        df_dict['D'] = (Dx, Dy, Dz)
+
+        x_values, y_values = np.split(np.transpose(df_dict['bb82d']), 2)
         bb82d_x_min = np.min(x_values)
         bb82d_x_max = np.max(x_values)
         bb82d_y_min = np.min(y_values)
         bb82d_y_max = np.max(y_values)
+
         # does the bb8 fit within the frame
         if bb82d_x_min > 0 \
                 and bb82d_y_min > 0 \
-                and bb82d_x_max < image_width \
-                and bb82d_y_max < image_height:
-
-
+                and bb82d_x_max < df_dict['image_data'].shape[1] \
+                and bb82d_y_max < df_dict['image_data'].shape[0]:
 
             # add ground truth camera
-            obj = object[1]
-            R_gt = utils.get_transformation_matrix(
-                obj['viewpoint']['azimuth'],
-                obj['viewpoint']['elevation'],
-                obj['viewpoint']['distance'],
-            )
-            df_this_one = pd.DataFrame([[image_file_name,
-                                         class_name,
-                                         bb8,
-                                         bb83d,
-                                         (Dx, Dy, Dz),
-                                         R_gt,
-                                         original_image]], columns = columns)
+            df_dict['R_gt'] = utils.get_transformation_matrix(obj['viewpoint']['azimuth'],
+                                                   obj['viewpoint']['elevation'],
+                                                   obj['viewpoint']['distance'])
+        else:
+            df_dict['R_gt'] = None
 
-            df_return = pd.concat([df_return, df_this_one])
+        df_dict['bb8_outside'] = True if df_dict['R_gt'] is None else False
+
+        # ['image_file_name',
+        #  'class_name',
+        #  'bb82d',
+        #  'bb83d',
+        #  'D',
+        #  'gt_camera_pose',
+        #  'truncated',
+        df_dict['truncated'] = obj['truncated']
+        #  'occluded',
+        df_dict['occluded'] = obj['occluded']
+        #  'nth_object_in_file'
+        df_dict['nth_object_in_file'] = nth_object_in_file
+        #  'image_data']
+        df_return = df_return.append(df_dict, ignore_index=True)
 
     return df_return
+
+
+def make_dataset(class_name):
+    output_directory = os.path.expanduser('~/Documents/UCL/PROJECT/DATA/BB8_PASCAL_DATA/')
+    set_types = list(itertools.product(['val',
+                                        'train'],
+                                       [pascal3d.dataset.Pascal3DDataset.dataset_source_enum.pascal,
+                                        pascal3d.dataset.Pascal3DDataset.dataset_source_enum.imagenet]))
+
+    data_sets = [get_pascal_datasets(set_demand[0], class_name, set_demand[1]) for set_demand in set_types]
+
+    data_sets
+    # create the bb8s
+    all_data = pd.concat([create_data(dataset) for dataset in data_sets])
+    h5_filename_proto = 'pascal3d_data_frame_{}.h5'
+    h5_filename = h5_filename_proto.format(class_name)
+    store = pd.HDFStore(os.path.join(output_directory, h5_filename))
+    store['df'] = all_data
+
+
+def main():
+    make_dataset('car')
+
 
 if __name__ == '__main__':
     main()

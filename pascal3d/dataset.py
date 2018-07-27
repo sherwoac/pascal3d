@@ -31,9 +31,7 @@ import pandas as pd
 from pascal3d import utils
 
 
-
 class Pascal3DAnnotation(object):
-
     def __init__(self, ann_file):
         ann_data = scipy.io.loadmat(ann_file)
 
@@ -130,35 +128,38 @@ class Pascal3DDataset(object):
         'tvmonitor',
     ]
 
-    def __init__(self, data_type, dataset_source = dataset_source_enum.pascal, use_split_file=False):
-        assert data_type in ('train', 'val', 'all')
+    def __init__(self, data_type, dataset_source = dataset_source_enum.pascal, use_split_files=False, class_only=None):
+        assert data_type in ('train', 'val', 'all', 'test')
         assert isinstance(dataset_source, self.dataset_source_enum), "unknown data source"
         self.dataset_source = dataset_source
 
-        #self.dataset_dir = osp.expanduser('~/data/datasets/Pascal3D/PASCAL3D+_release1.1')
+        # self.dataset_dir = osp.expanduser('~/data/datasets/Pascal3D/PASCAL3D+_release1.1')
         self.dataset_dir = osp.expanduser('~/Documents/UCL/PROJECT/DATA/PASCAL3D+_release1.1')
         # data source
         self.annotation_directory = osp.join(self.dataset_dir, 'Annotations/{}_' + dataset_source.name)
         self.image_directory = osp.join(self.dataset_dir, 'Images/{}_' + dataset_source.name)
 
-        # get all data ids
-        print('Generating index for annotations...')
-        data_ids = []
-        for cls in self.class_names[1:]:
-            cls_ann_dir = self.annotation_directory.format(cls)
-            if osp.isdir(cls_ann_dir):
-                for ann_file in os.listdir(cls_ann_dir):
-                    ann = Pascal3DAnnotation(osp.join(cls_ann_dir, ann_file))
-                    if hasattr(ann, 'segmented') and not ann.segmented:
-                        continue
-                    data_id = osp.splitext(ann_file)[0]
-                    data_ids.append(data_id)
-        print('Done.')
-        data_ids = list(set(data_ids))
-        # split data to train and val
-        if use_split_file:
-            self.data_ids = self.load_image_set_files(data_type)
+        if use_split_files:
+            df_file_names = self.load_image_set_files(data_type, class_only)
+            df_file_names['data_set'] = data_type
+            df_file_names['data_source'] = dataset_source.name
+            self.data_ids = df_file_names
         else:
+            # get all data ids
+            print('Generating index for annotations...')
+            data_ids = []
+            for cls in self.class_names[1:]:
+                cls_ann_dir = self.annotation_directory.format(cls)
+                if osp.isdir(cls_ann_dir):
+                    for ann_file in os.listdir(cls_ann_dir):
+                        ann = Pascal3DAnnotation(osp.join(cls_ann_dir, ann_file))
+                        if hasattr(ann, 'segmented') and not ann.segmented:
+                            continue
+                        data_id = osp.splitext(ann_file)[0]
+                        data_ids.append(data_id)
+            print('Done.')
+            data_ids = list(set(data_ids))
+            # split data to train and val
             if not data_type == 'all':
                 ids_train, ids_val = sklearn.model_selection.train_test_split(
                     data_ids, test_size=0.25, random_state=1234)
@@ -175,7 +176,23 @@ class Pascal3DDataset(object):
     def __len__(self):
         return len(self.data_ids)
 
-    def load_image_set_files(self, file_ending='val'):
+    @staticmethod
+    def _load_class(class_name, class_file_proto):
+        files_dataframe = pd.DataFrame(columns=['file_name'])
+        class_file = class_file_proto.format(class_name)
+        class_file_handle = open(class_file, "r")
+        text_file_lines = class_file_handle.readlines()
+        for text_line in text_file_lines:
+            # imagenet
+            if len(text_line.split(' ')) == 1 or \
+                    (text_line.split(' ')[-1] and int(text_line.split(' ')[-1]) == 1): # pascal: only take the positive examples from VOC
+                validation_file_name = text_line.split(' ')[0]
+                files_dataframe = files_dataframe.append({'file_name': validation_file_name}, ignore_index=True)
+
+        class_file_handle.close()
+        return files_dataframe
+
+    def load_image_set_files(self, file_ending, class_only=None):
         files_dataframe = pd.DataFrame(columns=['file_name'])
         if self.dataset_source == self.dataset_source_enum.pascal:
             image_set_directory=os.path.join(self.dataset_dir, 'PASCAL/VOCdevkit/VOC2012/ImageSets/Main')
@@ -184,29 +201,22 @@ class Pascal3DDataset(object):
             image_set_directory = os.path.join(self.dataset_dir, 'Image_sets')
             class_file_proto = os.path.join(image_set_directory, '{}_imagenet_' + file_ending + '.txt')
 
-        for class_name in self.class_names[1:]:
-            class_file = class_file_proto.format(class_name)
-            class_file_handle = open(class_file, "r")
-            text_file_lines = class_file_handle.readlines()
-            for text_line in text_file_lines:
-                if (text_line.split(' ')[1] and int(text_line.split(' ')[1]) == 1) or \
-                        not text_line.split(' ')[1]:  # only take the positive examples from VOC
-                    validation_file_name = text_line.split(' ')[0]
-                    files_dataframe = files_dataframe.append({'file_name': validation_file_name}, ignore_index=True)
+        if class_only:
+            files_dataframe = files_dataframe.append(Pascal3DDataset._load_class(class_only, class_file_proto))
+        else:
+            for class_name in self.class_names[1:]:
+                files_dataframe = files_dataframe.append(Pascal3DDataset._load_class(class_name, class_file_proto))
 
-            class_file_handle.close()
         return files_dataframe
 
-    def get_data(self, i):
-        data_id = self.data_ids[i]
-
-        data = {
+    def get_data(self, data_id):
+        data = self.data_ids.loc[self.data_ids['file_name'] == data_id].to_dict(orient='records')[0]
+        data.update({
             'img': None,
             'objects': [],
             'class_cads': {},
             'label_cls': None,
-            'data_id': data_id,
-        }
+        })
         for class_name in self.class_names[1:]:
             cls_ann_dir = self.annotation_directory.format(class_name)
             ann_file = osp.join(cls_ann_dir, data_id + '.mat')
