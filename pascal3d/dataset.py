@@ -138,7 +138,7 @@ class Pascal3DDataset(object):
         # data source
         self.annotation_directory = osp.join(self.dataset_dir, 'Annotations/{}_' + dataset_source.name)
         self.image_directory = osp.join(self.dataset_dir, 'Images/{}_' + dataset_source.name)
-
+        self.class_only = class_only
         if use_split_files:
             df_file_names = self.load_image_set_files(data_type, class_only)
             df_file_names['data_set'] = data_type
@@ -187,6 +187,7 @@ class Pascal3DDataset(object):
             if len(text_line.split(' ')) == 1 or \
                     (text_line.split(' ')[-1] and int(text_line.split(' ')[-1]) == 1): # pascal: only take the positive examples from VOC
                 validation_file_name = text_line.split(' ')[0]
+                validation_file_name = validation_file_name.replace('\n', '')
                 files_dataframe = files_dataframe.append({'file_name': validation_file_name}, ignore_index=True)
 
         class_file_handle.close()
@@ -401,9 +402,9 @@ class Pascal3DDataset(object):
           bb83d, **obj['viewpoint'])
 
         # cube size, Dx, Dy, Dz
-        Dx = xMax - xMin
-        Dy = yMax - yMin
-        Dz = zMax - zMin
+        Dx = float(xMax - xMin)
+        Dy = float(yMax - yMin)
+        Dz = float(zMax - zMin)
 
         return (bb8_vertices_2d, Dx, Dy, Dz, bb83d)
 
