@@ -9,6 +9,8 @@ intersect3d_ray_aabb = geometry.intersect3d_ray_aabb
 intersect3d_ray_triangle = geometry.intersect3d_ray_triangle
 project_points_2d_to_3d = geometry.project_points_2d_to_3d
 project_points_3d_to_2d = geometry.project_points_3d_to_2d
+project_points_3d_to_2d_opencv = geometry.project_points_3d_to_2d_opencv
+make_camera_matrix = geometry.make_camera_matrix
 raytrace_camera_frame_on_triangles = \
     geometry.raytrace_camera_frame_on_triangles
 transform_to_camera_frame = geometry.transform_to_camera_frame

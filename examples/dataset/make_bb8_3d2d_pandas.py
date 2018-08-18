@@ -5,15 +5,131 @@ from pascal3d import utils
 import os
 import numpy as np
 import pandas as pd
-from joblib import Parallel, delayed
 import itertools
+from joblib import Parallel, delayed
 import multiprocessing
+import cv2
+import matplotlib.pyplot as plt
 
 num_cores = multiprocessing.cpu_count()
 cropped_image_size = (224, 224)
 string_columns = ['file_name', 'data_source', 'data_set']
 output_directory = os.path.expanduser('~/Documents/UCL/PROJECT/DATA/BB8_PASCAL_DATA/')
 
+
+class Bb82d(object):
+    def __init__(self, bb8_label):
+        self.bb8_label = np.copy(bb8_label)
+
+    def scale_labels(self, image_scale_factor):
+        self.bb8_label *= image_scale_factor
+
+    def make_label_int(self):
+        self.bb8_label = self.bb8_label.astype(dtype=int)
+
+    @property
+    def x_values(self):
+        return self.bb8_label[:, 0]
+
+    @x_values.setter
+    def x_values(self, value):
+        self.bb8_label[:, 0] = value
+
+    @property
+    def y_values(self):
+        return self.bb8_label[:, 1]
+
+    @y_values.setter
+    def y_values(self, value):
+        self.bb8_label[:, 1] = value
+
+    @property
+    def x_min(self):
+        return np.min(self.x_values)
+
+    @property
+    def y_min(self):
+        return np.min(self.y_values)
+
+    @property
+    def x_max(self):
+        return np.max(self.x_values)
+
+    @property
+    def y_max(self):
+        return np.max(self.y_values)
+
+    @property
+    def x_mid(self):
+        return 0.5 * (self.x_max + self.x_min)
+
+    @property
+    def y_mid(self):
+        return 0.5 * (self.y_max + self.y_min)
+
+    @property
+    def height(self):
+        return self.y_max - self.y_min
+
+    @property
+    def width(self):
+        return self.x_max - self.x_min
+
+    @property
+    def front_face(self):
+        return self.bb8_label[0:4]
+
+    @property
+    def back_face(self):
+        return self.bb8_label[4:8]
+
+    def limits(self):
+        return self.x_min, self.y_min, self.x_max, self.y_max
+
+    @property
+    def box_limits(self):
+        box = np.array(
+            [[self.x_max, self.y_min],
+             [self.x_max, self.y_max],
+             [self.x_min, self.y_max],
+             [self.x_min, self.y_min]])
+        return box
+
+    def offset_labels(self, x_offset, y_offset):
+        self.x_values += x_offset
+        self.y_values += y_offset
+
+
+line_colour = (0, 255, 0)  # green
+front_square_colour = (0, 0, 255)  # red
+inferred_front_square_colour = (255, 0, 0)  # bloo
+inferred_front_line_colour = (255, 255, 0)
+
+
+def show_image(image):
+    image_copy = np.copy(image)
+    plt.imshow(cv2.cvtColor(image_copy, cv2.COLOR_BGR2RGB))
+    plt.show()
+
+
+def draw_bb82d_on_image(bb82d_label,
+                        image,
+                        front_face_colour=front_square_colour,
+                        line_colour=line_colour):
+    inted_bb8 = Bb82d(bb82d_label)
+    inted_bb8.make_label_int()
+    copy_image = np.copy(image)
+    # front and back faces
+    cv2.polylines(copy_image, [inted_bb8.front_face], True, front_face_colour, thickness=1)
+    cv2.polylines(copy_image, [inted_bb8.back_face], True, line_colour, thickness=1)
+
+    # side lines
+    for line_number in range(4):
+        pt1 = inted_bb8.front_face[line_number]
+        pt2 = inted_bb8.back_face[line_number]
+        cv2.line(copy_image, (pt1[0], pt1[1]), (pt2[0], pt2[1]), line_colour, thickness=1)
+
+    return copy_image
 
 def get_pascal_datasets(data_type, class_name, dataset_source):
     pascal_data_set_val = pascal3d.dataset.Pascal3DDataset(data_type,
@@ -53,8 +169,11 @@ def process_data(index, data_set_index, p3d_data_set):
             obj = object[1]
             df_dict['image_data'] = data['img']
             df_dict['class_name'] = object[0]
-            (df_dict['bb82d'], Dx, Dy, Dz, df_dict['bb83d']) = p3d_data_set.camera_transform_cad_bb8_object(df_dict['class_name'], obj, class_cads)
+            (df_dict['bb82d'], Dx, Dy, Dz, df_dict['bb83d'], df_dict['viewpoint']) = p3d_data_set.camera_transform_cad_bb8_object(df_dict['class_name'], obj, class_cads)
             df_dict['D'] = (Dx, Dy, Dz)
+
+            # image = df_dict['image_data']
+            # show_image(draw_bb82d_on_image(df_dict['bb82d'], image))
 
             x_values, y_values = np.split(np.transpose(df_dict['bb82d']), 2)
             bb82d_x_min = np.min(x_values)
@@ -72,13 +191,16 @@ def process_data(index, data_set_index, p3d_data_set):
                 df_dict['R_gt'] = utils.get_transformation_matrix(obj['viewpoint']['azimuth'],
                                                        obj['viewpoint']['elevation'],
                                                        obj['viewpoint']['distance'])
+                df_dict['truncated'] = obj['truncated']
             else:
+                df_dict['truncated'] = True
                 df_dict['R_gt'] = np.zeros(shape=(4, 4), dtype=np.float64)
 
             assert df_dict['R_gt'].shape == (4, 4) and df_dict['R_gt'].dtype == np.float64, "wrong trousers"
 
+            df_dict['camera_intrinsic'] = utils.make_camera_matrix(df_dict['viewpoint'])
+
             df_dict['bb8_outside'] = not np.any(df_dict['R_gt'])
-            df_dict['truncated'] = obj['truncated']
             df_dict['occluded'] = obj['occluded']
             df_dict['nth_object_in_file'] = nth_object_in_file
             df_temp = pd.DataFrame(columns=df_dict.keys())
@@ -135,12 +257,24 @@ def make_dataset(class_name):
     # create the bb8s
     all_data = pd.concat([create_data(dataset) for dataset in data_sets])
     all_data['class_name'].astype(str)
-    df_to_hdf(all_data, class_name)
+    #df_to_hdf(all_data, class_name)
     df_to_pickle(all_data, class_name)
 
 
 def main():
-    make_dataset('car')
+    classes = ['aeroplane',
+    'bicycle',
+    'boat',
+    'bottle',
+    'bus',
+    'chair',
+    'diningtable',
+    'motorbike',
+    'sofa',
+    'train',
+    'tvmonitor']
+    for class_name in classes:
+        make_dataset(class_name)
 
 
 if __name__ == '__main__':

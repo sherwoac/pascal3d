@@ -28,6 +28,7 @@ import tqdm
 import pandas as pd
 
 
+
 from pascal3d import utils
 
 
@@ -253,7 +254,7 @@ class Pascal3DDataset(object):
 
             if data['img'] is None:
                 img_file = osp.join(self.image_directory.format(class_name), ann.img_filename)
-                data['img'] = scipy.misc.imread(img_file)
+                data['img'] = cv2.imread(img_file, cv2.IMREAD_COLOR)
 
             for obj in ann.objects:
                 obj['cad_basename'] = osp.join(
@@ -398,15 +399,22 @@ class Pascal3DDataset(object):
         bb83d[6] = [xMax, yMax, zMin]
         bb83d[7] = [xMax, yMax, zMax]
 
-        bb8_vertices_2d = utils.project_points_3d_to_2d(
-          bb83d, **obj['viewpoint'])
+        bb8_vertices_2d = utils.project_points_3d_to_2d_opencv(
+            bb83d, **obj['viewpoint'])
+
+
+
+        # bb8_vertices_2d = utils.project_points_3d_to_2d(
+        #   bb83d, **obj['viewpoint'])
 
         # cube size, Dx, Dy, Dz
         Dx = float(xMax - xMin)
         Dy = float(yMax - yMin)
         Dz = float(zMax - zMin)
 
-        return (bb8_vertices_2d, Dx, Dy, Dz, bb83d)
+        return (bb8_vertices_2d, Dx, Dy, Dz, bb83d, obj['viewpoint'])
+
+
 
     def show_cad(self, i, camframe=False):
         if camframe:
