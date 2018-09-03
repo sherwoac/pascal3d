@@ -11,7 +11,7 @@ import multiprocessing
 import cv2
 import matplotlib.pyplot as plt
 
-num_cores = multiprocessing.cpu_count()
+num_cores = 1 #multiprocessing.cpu_count()
 cropped_image_size = (224, 224)
 string_columns = ['file_name', 'data_source', 'data_set']
 output_directory = os.path.expanduser('~/Documents/UCL/PROJECT/DATA/BB8_PASCAL_DATA/')

@@ -212,6 +212,9 @@ class Pascal3DDataset(object):
         return files_dataframe
 
     def get_data(self, data_id):
+        if type(data_id) is not str:
+            data_id = self.data_ids['file_name'].iloc[data_id]
+
         data = self.data_ids.loc[self.data_ids['file_name'] == data_id].to_dict(orient='records')[0]
         data.update({
             'img': None,
@@ -219,6 +222,7 @@ class Pascal3DDataset(object):
             'class_cads': {},
             'label_cls': None,
         })
+
         for class_name in self.class_names[1:]:
             cls_ann_dir = self.annotation_directory.format(class_name)
             ann_file = osp.join(cls_ann_dir, data_id + '.mat')
@@ -412,7 +416,8 @@ class Pascal3DDataset(object):
         Dy = float(yMax - yMin)
         Dz = float(zMax - zMin)
 
-        return (bb8_vertices_2d, Dx, Dy, Dz, bb83d, obj['viewpoint'])
+        #return (bb8_vertices_2d, Dx, Dy, Dz, bb83d, obj['viewpoint'])
+        return (bb8_vertices_2d, Dx, Dy, Dz, bb83d)
 
 
 
@@ -452,9 +457,7 @@ class Pascal3DDataset(object):
                 obj['viewpoint']['elevation'],
                 obj['viewpoint']['distance'],
             )
-            (bb8, Dx, Dy, Dz, bb83d) = self.camera_transform_cad_bb8_object(cls,
-                                                                            obj,
-                                                                            class_cads)
+            (bb8, Dx, Dy, Dz, bb83d) = self.camera_transform_cad_bb8_object(cls, obj, class_cads)
 
             pts = np.transpose(np.reshape(bb8[0:16], [8, 2])).astype(np.int32)
             front_face_pts = pts[:, 0:4].T
@@ -481,7 +484,6 @@ class Pascal3DDataset(object):
             bbox[2] = [xmax, ymax]
             bbox[3] = [xmax, ymin]
             cv2.rectangle(img, (xmin, ymin), (xmax, ymax), color=bbox_colour, thickness=2)
-            get_new_bb()
 
             ax1.imshow(img)
 
@@ -593,16 +595,16 @@ class Pascal3DDataset(object):
 
     def show_cad_overlay(self, i):
         data = self.get_data(i)
-        img = data['img']
+        img = cv2.cvtColor(data['img'], cv2.COLOR_BGR2RGB)
         objects = data['objects']
         class_cads = data['class_cads']
-
         ax1 = plt.subplot(121)
         plt.axis('off')
         ax1.imshow(img)
 
         ax2 = plt.subplot(122)
         plt.axis('off')
+
         ax2.imshow(img)
 
         for cls, obj in objects:
