@@ -100,6 +100,45 @@ def project_points_3d_to_2d(
 
     return x2d
 
+def project_points_3d_to_2d_with_R(
+        x3d,
+        R,
+        focal,
+        theta,
+        principal,
+        viewport,
+        ):
+
+    if R is None:
+        return []
+
+    # perspective project matrix
+    # however, we set the viewport to 3000, which makes the camera similar to
+    # an affine-camera.
+    # Exploring a real perspective camera can be a future work.
+    M = viewport
+    P = np.array([[M * focal, 0, 0],
+                  [0, M * focal, 0],
+                  [0, 0, -1]]).dot(R[:3, :4])
+
+    # project
+    x3d_ = np.hstack((x3d, np.ones((len(x3d), 1)))).T
+    x2d = np.dot(P, x3d_)
+    x2d[0, :] = x2d[0, :] / x2d[2, :]
+    x2d[1, :] = x2d[1, :] / x2d[2, :]
+    x2d = x2d[0:2, :]
+
+    # rotation matrix 2D
+    R2d = np.array([[math.cos(theta), -math.sin(theta)],
+                    [math.sin(theta), math.cos(theta)]])
+    x2d = np.dot(R2d, x2d).T
+
+    # transform to image coordinate
+    x2d[:, 1] *= -1
+    x2d = x2d + np.repeat(principal[np.newaxis, :], len(x2d), axis=0)
+
+    return x2d
+
 
 def project_points_2d_to_3d(x2d, theta, focal, principal, viewport):
     x2d = x2d.copy()

@@ -31,6 +31,18 @@ import pandas as pd
 from pascal3d import utils
 
 
+def open_dataframe_pkl(filename):
+    assert os.path.exists(filename), "pkl file not found at: %s" % filename
+    return pd.read_pickle(filename)
+
+
+def load_inferred_viewpoint(i, class_name, model_name):
+    results_file = '~/Documents/UCL/PROJECT/DATA/OUTPUT/results.pkl'
+    results_file = os.path.expanduser(results_file)
+    assert os.path.exists(results_file), "file not found:{}".format(results_file)
+    df_results = open_dataframe_pkl(results_file)
+    df_filtered_result = np.asarray(df_results['inferred_extrinsic'].loc[(df_results['class_name'] == class_name) & (df_results['model_name'] == model_name)].iloc[i])
+    return df_filtered_result
 
 class Pascal3DAnnotation(object):
 
@@ -218,7 +230,8 @@ class Pascal3DDataset(object):
         return files_dataframe
 
     def get_data(self, i):
-        data_id = self.data_ids[i]
+        #df_filtered_result = np.asarray(df_results['inferred_extrinsic'].loc[(df_results['class_name'] == class_name)].iloc[i])
+        data_id = i #self.data_ids[i]
 
         data = {
             'img': None,
@@ -591,6 +604,51 @@ class Pascal3DDataset(object):
 
         plt.tight_layout()
         plt.show()
+
+    def show_cad_overlay_inferred(self, file_name, i, class_name, model_name, colour):
+        data = self.get_data(file_name)
+        img = data['img']
+        objects = data['objects']
+        class_cads = data['class_cads']
+
+        plt.close('all')
+
+        ax1 = plt.subplot(111)
+        plt.axis('off')
+        ax1.imshow(img)
+
+        # ax2 = plt.subplot(122)
+        # plt.axis('off')
+        # ax2.imshow(img)
+
+        for cls, obj in objects:
+            if cls != class_name:
+                continue
+            cad_index = obj['cad_index']
+            cad = class_cads[cls][cad_index]
+
+            vertices_3d = cad['vertices']
+            faces = cad['faces']
+
+            R = load_inferred_viewpoint(i, class_name, model_name)
+
+            del obj['viewpoint']['azimuth']
+            del obj['viewpoint']['elevation']
+            del obj['viewpoint']['distance']
+            vertices_2d = utils.project_points_3d_to_2d_with_R(
+                vertices_3d, R, **obj['viewpoint'])
+
+            patches = []
+            for face in faces:
+                points = [vertices_2d[i_vertex-1] for i_vertex in face]
+                poly = Polygon(points, True)
+                patches.append(poly)
+            p = PatchCollection(patches, cmap=matplotlib.cm.jet, alpha=0.4, facecolors=[colour])
+            ax1.add_collection(p)
+
+        plt.tight_layout()
+        plt.savefig('/home/adam/Documents/UCL/PROJECT/DATA/OUTPUT/thesis_plots/'+file_name + '_' + class_name + '_' + model_name + '.png')
+
 
     def show_cad_overlay(self, i):
         data = self.get_data(i)
